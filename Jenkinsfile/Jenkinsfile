@@ -1,0 +1,80 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'my-node-app0'
+        
+    }
+
+    tools {
+   
+        nodejs 'NodeJS 16'
+    }
+
+    stages {
+        stage('Prepare') {
+            steps {
+               
+                checkout scm
+            }
+        }
+
+        stage('Build') {
+            steps {
+                echo 'Building Docker image...'
+                script {
+                     docker.build("${DOCKER_IMAGE}")
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running tests...'
+                script {
+           
+                    docker.run("${DOCKER_IMAGE}", 'npm test').inside {
+                        sh 'npm install'
+                        sh 'npm test'
+                    }
+                }
+            }
+        }
+
+        stage('Publish') {
+            when {
+                branch 'main'
+            }
+            steps {
+                echo 'Publishing Docker image...'
+                script {
+                   
+                    docker.withRegistry('https://'+REGISTRY, 'docker-credentials-id') {
+                        docker.image("${DOCKER_IMAGE}").push("${BUILD_NUMBER}")
+                        docker.image("${DOCKER_IMAGE}").push("latest")
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying...'
+                script {
+                    sh './deploy_to_kubernetes.sh'
+                }
+            }
+        }
+    }
+
+    post {
+        
+        success {
+            echo 'Build was successful!'
+        }
+        failure {
+            echo 'Build failed.'
+        }
+    }
+}
+
